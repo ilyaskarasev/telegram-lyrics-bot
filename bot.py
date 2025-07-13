@@ -3,6 +3,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from genius_scraper import GeniusScraper
 from config import TELEGRAM_BOT_TOKEN
+from translate import translate_text
 
 # Настройка логирования
 logging.basicConfig(
@@ -62,19 +63,16 @@ async def search_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, укажите название песни и исполнителя.")
         return
     
-    # Отправляем сообщение о начале поиска
-    status_message = await update.message.reply_text("🔍 Ищу текст песни...")
-    
     try:
         # Ищем песню
         result, error = scraper.search_song(query)
         
         if error:
-            await status_message.edit_text(f"❌ {error}")
+            await update.message.reply_text(f"❌ {error}")
             return
         
         if not result:
-            await status_message.edit_text("❌ Песня не найдена. Попробуйте изменить запрос.")
+            await update.message.reply_text("❌ Песня не найдена. Попробуйте изменить запрос.")
             return
         
         # Формируем ответ
@@ -82,42 +80,43 @@ async def search_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lyrics = result['lyrics']
         url = result['url']
         
-        # Разбиваем длинный текст на части (Telegram ограничение 4096 символов)
+        # Переводим построчно
+        lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
+        translated_lines = []
+        for line in lines:
+            if line:
+                ru = translate_text(line)
+                translated_lines.append(f"{line}\n{ru}")
+            else:
+                translated_lines.append("")
+        
+        # Собираем результат
+        translated_text = '\n\n'.join(translated_lines)
+        response_text = f"🎵 {title}\n\n{translated_text}\n\n🔗 {url}"
+        
+        # Ограничение Telegram
         max_length = 4000
-        if len(lyrics) > max_length:
+        if len(response_text) > max_length:
             # Разбиваем на части
             parts = []
             current_part = f"🎵 {title}\n\n"
-            
-            lines = lyrics.split('\n')
-            for line in lines:
-                if len(current_part + line + '\n') > max_length:
+            for block in translated_lines:
+                if len(current_part + block + '\n\n') > max_length:
                     parts.append(current_part)
-                    current_part = line + '\n'
+                    current_part = block + '\n\n'
                 else:
-                    current_part += line + '\n'
-            
+                    current_part += block + '\n\n'
             if current_part:
                 parts.append(current_part)
-            
-            # Отправляем первую часть
-            await status_message.edit_text(parts[0])
-            
-            # Отправляем остальные части
+            await update.message.reply_text(parts[0])
             for i, part in enumerate(parts[1:], 1):
                 await update.message.reply_text(f"📄 Часть {i+1}:\n{part}")
-            
-            # Добавляем ссылку в последнее сообщение
             await update.message.reply_text(f"🔗 Полный текст: {url}")
-            
         else:
-            # Отправляем весь текст
-            response_text = f"🎵 {title}\n\n{lyrics}\n\n🔗 {url}"
-            await status_message.edit_text(response_text)
-            
+            await update.message.reply_text(response_text)
     except Exception as e:
         logger.error(f"Ошибка при поиске: {e}")
-        await status_message.edit_text("❌ Произошла ошибка при поиске. Попробуйте позже.")
+        await update.message.reply_text("❌ Произошла ошибка при поиске. Попробуйте позже.")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
