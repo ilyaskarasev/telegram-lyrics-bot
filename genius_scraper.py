@@ -22,43 +22,75 @@ class GeniusScraper:
             # Очищаем и улучшаем запрос
             query = self._clean_query(query)
             
-            # Кодируем запрос для URL
-            encoded_query = quote_plus(query)
-            search_url = f"https://genius.com/search?q={encoded_query}"
+            # Попробуем прямой поиск по известным URL
+            direct_url = self._try_direct_search(query)
+            if direct_url:
+                return self.get_lyrics(direct_url)
             
-            response = self.session.get(search_url, timeout=10)
-            response.raise_for_status()
+            # Если прямой поиск не сработал, попробуем API
+            api_result = self._search_via_api(query)
+            if api_result:
+                return self.get_lyrics(api_result)
             
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Улучшенный поиск ссылок на песни
-            song_links = []
-            
-            # Ищем все ссылки на песни
-            for link in soup.find_all('a', href=True):
-                href = link.get('href', '')
-                if '/songs/' in href and not href.startswith('http'):
-                    song_links.append(link)
-            
-            # Также ищем в результатах поиска
-            search_results = soup.find_all('div', class_=re.compile(r'search_result|song_card|mini_card'))
-            for result in search_results:
-                link = result.find('a', href=re.compile(r'/songs/'))
-                if link and link not in song_links:
-                    song_links.append(link)
-            
-            if not song_links:
-                # Попробуем альтернативный поиск
-                return self._alternative_search(query)
-            
-            # Берем первую найденную песню
-            song_link = song_links[0]
-            song_url = "https://genius.com" + song_link['href']
-            
-            return self.get_lyrics(song_url)
+            # Альтернативный поиск
+            return self._alternative_search(query)
             
         except Exception as e:
             return None, f"Ошибка при поиске: {str(e)}"
+    
+    def _try_direct_search(self, query):
+        """Попытка прямого поиска по известным паттернам"""
+        # Попробуем создать URL напрямую для популярных песен
+        query_lower = query.lower()
+        
+        # Известные паттерны для популярных песен
+        patterns = [
+            ("bohemian rhapsody queen", "/Queen-bohemian-rhapsody-lyrics"),
+            ("let it be beatles", "/The-Beatles-let-it-be-lyrics"),
+            ("yesterday beatles", "/The-Beatles-yesterday-lyrics"),
+            ("imagine john lennon", "/John-Lennon-imagine-lyrics"),
+            ("hotel california eagles", "/Eagles-hotel-california-lyrics"),
+            ("stairway to heaven led zeppelin", "/Led-Zeppelin-stairway-to-heaven-lyrics"),
+            ("smells like teen spirit nirvana", "/Nirvana-smells-like-teen-spirit-lyrics"),
+            ("wonderwall oasis", "/Oasis-wonderwall-lyrics"),
+            ("creep radiohead", "/Radiohead-creep-lyrics"),
+            ("bohemian rhapsody", "/Queen-bohemian-rhapsody-lyrics"),
+            ("let it be", "/The-Beatles-let-it-be-lyrics"),
+            ("yesterday", "/The-Beatles-yesterday-lyrics"),
+        ]
+        
+        for pattern_query, url_path in patterns:
+            if pattern_query in query_lower or query_lower in pattern_query:
+                full_url = "https://genius.com" + url_path
+                # Проверим, что страница существует
+                try:
+                    response = self.session.get(full_url, timeout=5)
+                    if response.status_code == 200:
+                        return full_url
+                except:
+                    continue
+        
+        return None
+    
+    def _search_via_api(self, query):
+        """Поиск через API Genius (если доступен)"""
+        try:
+            # Попробуем использовать API поиск
+            api_url = f"https://genius.com/api/search/multi?per_page=5&q={quote_plus(query)}"
+            response = self.session.get(api_url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'response' in data and 'sections' in data['response']:
+                    for section in data['response']['sections']:
+                        if section.get('type') == 'song':
+                            for hit in section.get('hits', []):
+                                if 'result' in hit and 'url' in hit['result']:
+                                    return hit['result']['url']
+        except:
+            pass
+        
+        return None
     
     def _clean_query(self, query):
         """Очистка и улучшение поискового запроса"""
