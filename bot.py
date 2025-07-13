@@ -84,9 +84,17 @@ async def search_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
         translated_lines = []
         for line in lines:
-            if line:
-                ru = translate_text(line)
-                translated_lines.append(f"{line}\n{ru}")
+            if line and len(line) > 3:  # Переводим только строки длиннее 3 символов
+                try:
+                    ru = translate_text(line)
+                    if ru and ru != line:  # Если перевод успешен и отличается от оригинала
+                        translated_lines.append(f"{line}\n{ru}")
+                    else:
+                        translated_lines.append(line)
+                except Exception:
+                    translated_lines.append(line)
+            elif line:
+                translated_lines.append(line)
             else:
                 translated_lines.append("")
         
