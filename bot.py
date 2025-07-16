@@ -88,7 +88,8 @@ async def search_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     ru = translate_text(line)
                     if ru and ru != line:  # Если перевод успешен и отличается от оригинала
-                        translated_lines.append(f"{line}\n{ru}")
+                        # Оригинал, затем перевод жирным
+                        translated_lines.append(f"{line}\n<b>{ru}</b>")
                     else:
                         translated_lines.append(line)
                 except Exception:
@@ -97,11 +98,9 @@ async def search_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 translated_lines.append(line)
             else:
                 translated_lines.append("")
-        
         # Собираем результат
         translated_text = '\n\n'.join(translated_lines)
         response_text = f"🎵 {title}\n\n{translated_text}\n\n🔗 {url}"
-        
         # Ограничение Telegram
         max_length = 4000
         if len(response_text) > max_length:
@@ -116,12 +115,12 @@ async def search_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     current_part += block + '\n\n'
             if current_part:
                 parts.append(current_part)
-            await update.message.reply_text(parts[0])
+            await update.message.reply_text(parts[0], parse_mode='HTML')
             for i, part in enumerate(parts[1:], 1):
-                await update.message.reply_text(f"📄 Часть {i+1}:\n{part}")
+                await update.message.reply_text(f"📄 Часть {i+1}:\n{part}", parse_mode='HTML')
             await update.message.reply_text(f"🔗 Полный текст: {url}")
         else:
-            await update.message.reply_text(response_text)
+            await update.message.reply_text(response_text, parse_mode='HTML')
     except Exception as e:
         logger.error(f"Ошибка при поиске: {e}")
         await update.message.reply_text("❌ Произошла ошибка при поиске. Попробуйте позже.")
